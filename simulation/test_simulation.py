@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure the simulation directory is in sys.path
@@ -282,7 +283,7 @@ def test_phase_5_reservex_integration():
     agents = create_default_agents()
     sim = MultiAgentSimulator(agents=agents)
     mock_client = MockReserveXClient()
-    expires_at = "2026-09-21T20:00:00Z"
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
 
     # Print required human-readable integration mapping
     for agent in sim.active_agents:
@@ -295,7 +296,7 @@ def test_phase_5_reservex_integration():
                 print(f"Capability: {capability}")
                 print(f"Probability: {prob:.2f}\n")
 
-    # 2. Submit predictions as conditional ResourceOptions
+    # 2. Submit predictions as conditional ResourceOptions to mock client
     created_options = sim.submit_predictions(mock_client, expires_at=expires_at)
     print("Options successfully prepared.\n")
 
@@ -305,7 +306,7 @@ def test_phase_5_reservex_integration():
 
     # --- VERIFICATION 2 & 3: Correct capabilities and payloads constructed ---
     for opt in created_options:
-        assert "option_id" in opt
+        assert "id" in opt
         assert "agent_id" in opt and opt["agent_id"].startswith("agent-")
         assert "capability" in opt and opt["capability"] in RESOURCE_TO_CAPABILITY_MAP.values()
         assert "probability" in opt and 0.0 <= opt["probability"] <= 1.0
@@ -348,7 +349,7 @@ def test_phase_5_reservex_integration():
     assert is_supported_resource("LLM")
     assert is_supported_resource("GPU")
 
-    # --- VERIFICATION 8: Risk retrieval ---
+    # --- VERIFICATION 8: Risk retrieval on test double ---
     risk_response = sim.get_risk(mock_client)
     assert "risk" in risk_response
     print("=== RESERVE-X RISK ===\n")
@@ -357,24 +358,102 @@ def test_phase_5_reservex_integration():
         print(f"Total predicted demand: {info['total_probability']:.2f}")
         print(f"Risk: {info['risk_level']}\n")
 
-    # Optional live backend check (gracefully skips if offline)
-    _check_live_backend_if_available()
+    # --- LIVE BACKEND INTEGRATION (if reachable at localhost:8000) ---
+    _run_live_backend_integration(base_url="http://localhost:8000")
 
     print("PHASE 5 TEST PASSED")
 
 
-def _check_live_backend_if_available(base_url: str = "http://localhost:8000") -> None:
+def _run_live_backend_integration(base_url: str = "http://localhost:8000") -> None:
     """
-    Attempts a live call against RESERVE-X if a local instance is running.
-    Does not fail test suite if backend is unavailable.
+    Submits options to the live running RESERVE-X service, tests live risk,
+    tests option exercise (handling 409 capacity conflict), and tests cancellation.
     """
-    client = ReserveXClient(base_url=base_url, timeout=1.0)
+    client = ReserveXClient(base_url=base_url, timeout=3.0)
     try:
-        risk = client.get_risk()
-        print(f"[LIVE BACKEND DETECTED] Connected to {base_url}. Risk response: {risk}")
-    except Exception:
-        # Expected when backend is not running during standalone simulation tests
-        pass
+        status_check = client.get_status()
+        if not status_check or "timestamp" not in status_check:
+            print(f"[LIVE BACKEND] Backend at {base_url} returned invalid status.")
+            return
+    except Exception as e:
+        print(f"[LIVE BACKEND] Backend not reachable at {base_url} ({e}). Skipping live test.")
+        return
+
+    print("=== LIVE BACKEND VERIFICATION ===\n")
+    print(f"Connected to backend at {base_url}")
+
+    # 1. Create fresh simulator and submit predictions to live backend
+    live_sim = MultiAgentSimulator(agents=create_default_agents())
+    live_expires_at = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    submitted_options = live_sim.submit_predictions(client, expires_at=live_expires_at)
+    print(f"Successfully submitted {len(submitted_options)} options to live backend.")
+
+    # 2. Verify options exist in the REAL backend via GET /api/v1/options
+    live_options = client.get_options()
+    assert isinstance(live_options, list), f"Expected list of options, got {type(live_options)}"
+    live_opt_ids = {opt["id"] for opt in live_options}
+
+    for sub_opt in submitted_options:
+        assert sub_opt["id"] in live_opt_ids, f"Option {sub_opt['id']} not found in live backend"
+        assert sub_opt["status"] == "PENDING", f"Option {sub_opt['id']} should be PENDING"
+        assert 0.0 <= sub_opt["probability"] <= 1.0
+        assert sub_opt["expires_at"].replace("+00:00", "Z") == live_expires_at.replace("+00:00", "Z")
+
+
+    print(f"Verified all {len(submitted_options)} options exist in live backend with PENDING status.")
+
+    # 3. Verify LIVE risk calculation via GET /api/v1/risk
+    live_risk = client.get_risk()
+    assert "total_pending_options" in live_risk, "total_pending_options missing from risk response"
+    assert live_risk["total_pending_options"] >= len(submitted_options), (
+        f"Expected total_pending_options >= {len(submitted_options)}, got {live_risk['total_pending_options']}"
+    )
+    print(f"Live total_pending_options: {live_risk['total_pending_options']}")
+
+    # 4. Exercise one real option via POST /api/v1/options/{option_id}/exercise
+    exercise_opt = submitted_options[0]
+    print(f"\nAttempting to exercise option {exercise_opt['id']} ({exercise_opt['capability']})...")
+    exercise_res = client.exercise_option(exercise_opt["id"])
+
+    # Backend behavior: either 200/201 allocation (if capacity exists) or 409 Conflict (capacity failure)
+    if exercise_res.get("status_code") == 409:
+        print(f"Capacity failure as expected (HTTP 409): {exercise_res.get('detail')}")
+        # Verify option remains PENDING in live backend
+        post_options = client.get_options()
+        checked_opt = next((o for o in post_options if o["id"] == exercise_opt["id"]), None)
+        assert checked_opt is not None and checked_opt["status"] == "PENDING", (
+            "Option should remain PENDING after 409 Insufficient Capacity"
+        )
+        print(f"Verified option {exercise_opt['id']} remains PENDING after 409.")
+    else:
+        assert "allocation_id" in exercise_res or "id" in exercise_res, (
+            f"Expected allocation on exercise, got {exercise_res}"
+        )
+        print(f"Option exercised successfully into allocation: {exercise_res.get('id')}")
+
+    # 5. Cancel another real option via POST /api/v1/options/{option_id}/cancel
+    cancel_opt = submitted_options[1]
+    print(f"\nCancelling option {cancel_opt['id']} ({cancel_opt['capability']})...")
+    cancel_res = client.cancel_option(cancel_opt["id"])
+    assert cancel_res.get("status") == "CANCELLED", (
+        f"Expected status CANCELLED, got {cancel_res.get('status')}"
+    )
+
+    # Verify with GET /api/v1/options that the option is no longer pending
+    post_options = client.get_options()
+    cancelled_record = next((o for o in post_options if o["id"] == cancel_opt["id"]), None)
+    assert cancelled_record is not None and cancelled_record["status"] == "CANCELLED", (
+        f"Option {cancel_opt['id']} should have CANCELLED status in live backend"
+    )
+    print(f"Verified option {cancel_opt['id']} is CANCELLED in live backend.")
+
+    # 6. Verify backend recorded lifecycle events via GET /api/v1/events
+    live_events = client.get_events()
+    assert isinstance(live_events, list) and len(live_events) > 0, "Expected lifecycle events recorded"
+    event_types = {e.get("event_type") for e in live_events}
+    assert "OPTION_CREATED" in event_types, "Expected OPTION_CREATED event in backend"
+    assert "OPTION_CANCELLED" in event_types, "Expected OPTION_CANCELLED event in backend"
+    print(f"Recorded lifecycle event types: {sorted(list(event_types))}\n")
 
 
 if __name__ == "__main__":

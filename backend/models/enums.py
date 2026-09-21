@@ -10,6 +10,12 @@ class CapabilityType(str, Enum):
     CODE_EXECUTION = "CODE_EXECUTION"
     WEB_SEARCH = "WEB_SEARCH"
     LLM_INFERENCE = "LLM_INFERENCE"
+    TESTING = "TESTING"
+    TERMINAL = "TERMINAL"
+    DATABASE = "DATABASE"
+    SECURITY_SCAN = "SECURITY_SCAN"
+    DEPLOYMENT = "DEPLOYMENT"
+
 
 
 class OptionStatus(str, Enum):

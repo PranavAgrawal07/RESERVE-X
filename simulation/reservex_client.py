@@ -28,6 +28,7 @@ class ReserveXClient:
         method: str,
         path: str,
         data: dict[str, Any] | None = None,
+        raise_on_error: bool = False,
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         headers = {
@@ -39,9 +40,22 @@ class ReserveXClient:
             body_bytes = json.dumps(data).encode("utf-8")
 
         req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=self.timeout) as response:
-            res_data = response.read().decode("utf-8")
-            return json.loads(res_data) if res_data else {}
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                res_data = response.read().decode("utf-8")
+                return json.loads(res_data) if res_data else {}
+        except urllib.error.HTTPError as e:
+            if raise_on_error:
+                raise
+            res_data = e.read().decode("utf-8")
+            try:
+                error_body = json.loads(res_data) if res_data else {}
+            except Exception:
+                error_body = {"raw": res_data}
+            if isinstance(error_body, dict):
+                error_body["status_code"] = e.code
+            return error_body
+
 
     def create_option(
         self,
@@ -118,6 +132,7 @@ class MockReserveXClient:
     ) -> dict[str, Any]:
         option_id = f"opt-{len(self.options) + 1:04d}"
         record = {
+            "id": option_id,
             "option_id": option_id,
             "agent_id": agent_id,
             "capability": capability,
@@ -128,8 +143,10 @@ class MockReserveXClient:
         self.options.append(record)
         return record
 
-    def get_options(self) -> dict[str, Any]:
-        return {"options": list(self.options), "count": len(self.options)}
+
+    def get_options(self) -> list[dict[str, Any]]:
+        return list(self.options)
+
 
     def get_risk(self) -> dict[str, Any]:
         risk_by_capability: dict[str, Any] = {}
