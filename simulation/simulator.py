@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 try:
     from .agents import Agent, WorkflowStep
     from .predictor import Predictor
+    from .resources import map_resource_to_capability
 except ImportError:
     from agents import Agent, WorkflowStep
     from predictor import Predictor
+    from resources import map_resource_to_capability
 
 
 def create_default_agents() -> list[Agent]:
@@ -175,17 +179,6 @@ class MultiAgentSimulator:
 
         Returns:
             dict[str, dict[str, float]]: Mapping of resource -> {agent_id: probability}
-            Example:
-                {
-                    "LLM": {
-                        "agent-001": 0.69,
-                        "agent-002": 0.85
-                    },
-                    "testing_environment": {
-                        "agent-001": 0.90,
-                        "agent-003": 0.95
-                    }
-                }
         """
         demand: dict[str, dict[str, float]] = {}
         for agent in self.active_agents:
@@ -196,3 +189,48 @@ class MultiAgentSimulator:
                         demand[resource] = {}
                     demand[resource][agent.agent_id] = prob
         return demand
+
+    def submit_predictions(
+        self,
+        client,
+        expires_at: str,
+        skip_unknown: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Convert predictions for all active agents into RESERVE-X capabilities
+        and submit them as conditional ResourceOptions.
+
+        Args:
+            client: ReserveXClient or MockReserveXClient instance.
+            expires_at: Expiry timestamp or indicator string for created options.
+            skip_unknown: If True, skips unmapped resources. If False, raises ValueError.
+
+        Returns:
+            list[dict[str, Any]]: List of created ResourceOptions.
+        """
+        created_options: list[dict[str, Any]] = []
+        for agent in self.active_agents:
+            preds = self.predictor.predict(agent)
+            for resource, prob in preds.items():
+                if prob > 0.0:
+                    try:
+                        capability = map_resource_to_capability(resource)
+                    except ValueError as e:
+                        if skip_unknown:
+                            continue
+                        raise e
+
+                    option = client.create_option(
+                        agent_id=agent.agent_id,
+                        capability=capability,
+                        probability=prob,
+                        expires_at=expires_at,
+                    )
+                    created_options.append(option)
+        return created_options
+
+    def get_risk(self, client) -> dict[str, Any]:
+        """
+        Retrieve current system risk metrics from RESERVE-X via the client.
+        """
+        return client.get_risk()
