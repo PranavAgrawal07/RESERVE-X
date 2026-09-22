@@ -142,3 +142,100 @@ def run_what_if(req: WhatIfRequest):
     )
 
     return WhatIfResponse(current=current_metrics, scenario=scenario_metrics)
+
+
+# ── Live Autonomous Simulation ───────────────────────────────────
+
+class StartLiveSimulationRequest(BaseModel):
+    speed: float = Field(
+        default=1.0, ge=0.1, le=20.0,
+        description="Simulation speed multiplier (e.g. 1.0, 2.0, 5.0).",
+    )
+
+
+class LiveAgentStatus(BaseModel):
+    id: str
+    name: str
+    agent_type: str
+    current_step: str
+    current_capability: str
+    predicted_capability: str
+    prediction_probability: float
+    option_id: str | None = None
+    option_status: str
+    allocation_id: str | None = None
+    remaining_duration: int
+    waiting_for_capacity: bool
+    step_status: str
+
+
+class LiveSimulationStatusResponse(BaseModel):
+    running: bool
+    paused: bool
+    tick: int
+    speed: float
+    agents: list[LiveAgentStatus]
+
+
+@router.post("/simulation/live/start", response_model=LiveSimulationStatusResponse)
+def start_live_simulation(req: StartLiveSimulationRequest | None = None):
+    """Start or resume the autonomous multi-agent simulation loop."""
+    try:
+        from simulation.live_runner import get_live_runner
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from simulation.live_runner import get_live_runner
+
+    speed = req.speed if req else 1.0
+    runner = get_live_runner()
+    runner.start(speed=speed)
+    return runner.get_status()
+
+
+@router.post("/simulation/live/pause", response_model=LiveSimulationStatusResponse)
+def pause_live_simulation():
+    """Pause the autonomous simulation loop without destroying state."""
+    try:
+        from simulation.live_runner import get_live_runner
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from simulation.live_runner import get_live_runner
+
+    runner = get_live_runner()
+    runner.pause()
+    return runner.get_status()
+
+
+@router.post("/simulation/live/reset", response_model=LiveSimulationStatusResponse)
+def reset_live_simulation():
+    """Stop the simulation loop and reset agent workflow states cleanly."""
+    try:
+        from simulation.live_runner import get_live_runner
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from simulation.live_runner import get_live_runner
+
+    runner = get_live_runner()
+    runner.reset()
+    return runner.get_status()
+
+
+@router.get("/simulation/live/status", response_model=LiveSimulationStatusResponse)
+def get_live_simulation_status():
+    """Retrieve the real-time execution state of all 5 simulated agents."""
+    try:
+        from simulation.live_runner import get_live_runner
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+        from simulation.live_runner import get_live_runner
+
+    runner = get_live_runner()
+    return runner.get_status()

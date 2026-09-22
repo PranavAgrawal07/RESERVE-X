@@ -199,3 +199,30 @@ export interface OfflineEventLog {
   timestamp: string;
   details: Record<string, any>;
 }
+
+// ── Live Autonomous Simulation ──────────────────────────────────
+
+export interface LiveAgentStatus {
+  id: string;
+  name: string;
+  agent_type: string;
+  current_step: string;
+  current_capability: string;
+  predicted_capability: string;
+  prediction_probability: number;
+  option_id?: string | null;
+  option_status: string;
+  allocation_id?: string | null;
+  remaining_duration: number;
+  duration_remaining?: number;
+  waiting_for_capacity: boolean;
+  step_status: string;
+}
+
+export interface LiveSimulationStatus {
+  running: boolean;
+  paused: boolean;
+  tick: number;
+  speed: number;
+  agents: LiveAgentStatus[];
+}

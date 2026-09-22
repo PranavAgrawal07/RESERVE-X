@@ -1,4 +1,5 @@
 import React from "react";
+import { LiveSimulationControls } from "../components/simulation/LiveSimulationControls";
 import { KpiCards } from "../components/overview/KpiCards";
 import { ResourceOverview } from "../components/overview/ResourceOverview";
 import { RiskOverview } from "../components/overview/RiskOverview";
@@ -24,6 +25,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           Executive view — conditional resource reservation system for autonomous AI agent workflows
         </p>
       </div>
+
+      {/* Live Autonomous Simulation Runner Bar */}
+      <LiveSimulationControls />
 
       {/* KPI Row */}
       <KpiCards />

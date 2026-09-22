@@ -111,6 +111,12 @@ class ReserveXClient:
         """
         return self._request("POST", f"/api/v1/options/{option_id}/exercise")
 
+    def release_allocation(self, allocation_id: str) -> dict[str, Any]:
+        """
+        Release an active allocation via POST /api/v1/allocations/{allocation_id}/release.
+        """
+        return self._request("POST", f"/api/v1/allocations/{allocation_id}/release")
+
 
 class MockReserveXClient:
     """
@@ -122,6 +128,7 @@ class MockReserveXClient:
         self.options: list[dict[str, Any]] = []
         self.exercised_options: list[str] = []
         self.cancelled_options: list[str] = []
+        self.released_allocations: list[str] = []
 
     def create_option(
         self,
@@ -143,10 +150,8 @@ class MockReserveXClient:
         self.options.append(record)
         return record
 
-
     def get_options(self) -> list[dict[str, Any]]:
         return list(self.options)
-
 
     def get_risk(self) -> dict[str, Any]:
         risk_by_capability: dict[str, Any] = {}
@@ -178,7 +183,16 @@ class MockReserveXClient:
         for opt in self.options:
             if opt["option_id"] == option_id:
                 opt["status"] = "EXERCISED"
-                return opt
+                return {
+                    "id": f"alloc-{option_id}",
+                    "option_id": option_id,
+                    "resource_id": f"res-{opt['capability']}",
+                    "agent_id": opt["agent_id"],
+                    "capability": opt["capability"],
+                    "amount": 1,
+                    "allocated_at": "2026-09-22T00:00:00Z",
+                    "released_at": None,
+                }
         return {"error": "Option not found"}
 
     def cancel_option(self, option_id: str) -> dict[str, Any]:
@@ -188,3 +202,10 @@ class MockReserveXClient:
                 opt["status"] = "CANCELLED"
                 return opt
         return {"error": "Option not found"}
+
+    def release_allocation(self, allocation_id: str) -> dict[str, Any]:
+        self.released_allocations.append(allocation_id)
+        return {
+            "id": allocation_id,
+            "released_at": "2026-09-22T00:00:00Z",
+        }

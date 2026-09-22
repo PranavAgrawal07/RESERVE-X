@@ -3,6 +3,7 @@ import type {
   CreateOptionRequest,
   CreateResourceRequest,
   EventLog,
+  LiveSimulationStatus,
   Resource,
   ResourceOption,
   SystemRiskSummary,
@@ -152,4 +153,21 @@ export const api = {
     return request<QueuedOperation[]>(`/connectivity/queue${query}`);
   },
   getOfflineEvents: () => request<OfflineEventLog[]>("/connectivity/events"),
+
+  // Live Autonomous Simulation
+  getLiveSimulationStatus: () =>
+    request<LiveSimulationStatus>("/simulation/live/status"),
+  startLiveSimulation: (speed: number = 1.0) =>
+    request<LiveSimulationStatus>("/simulation/live/start", {
+      method: "POST",
+      body: JSON.stringify({ speed }),
+    }),
+  pauseLiveSimulation: () =>
+    request<LiveSimulationStatus>("/simulation/live/pause", {
+      method: "POST",
+    }),
+  resetLiveSimulation: () =>
+    request<LiveSimulationStatus>("/simulation/live/reset", {
+      method: "POST",
+    }),
 };
