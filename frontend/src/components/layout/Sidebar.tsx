@@ -6,6 +6,7 @@ import {
   ShieldAlert,
   History,
   CheckCircle2,
+  FlaskConical,
 } from "lucide-react";
 import { useReserveX } from "../../context/ReserveXContext";
 
@@ -55,6 +56,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         risk?.highest_risk_level === "CRITICAL"
           ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse"
           : "bg-orange-500/20 text-orange-300 border border-orange-500/40",
+    },
+    {
+      id: "what-if",
+      label: "What-If Simulator",
+      icon: FlaskConical,
+      badge: "HYPO",
+      badgeColor: "bg-violet-500/20 text-violet-300 border border-violet-500/30",
     },
     {
       id: "activity",

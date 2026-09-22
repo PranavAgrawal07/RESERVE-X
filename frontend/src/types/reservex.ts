@@ -118,3 +118,25 @@ export interface UpdateOptionRequest {
   probability?: number | null;
   expires_at?: string | null;
 }
+
+// ── What-If Simulation ──────────────────────────────────────────
+
+export interface WhatIfRequest {
+  agent_count: number;
+  resource_capacity: number;
+  average_probability: number;
+}
+
+export interface WhatIfMetrics {
+  capacity: number;
+  pending_options?: number | null;
+  agent_count?: number | null;
+  expected_demand: number;
+  overcommit_probability: number;
+  risk_level: RiskLevel;
+}
+
+export interface WhatIfResponse {
+  current: WhatIfMetrics;
+  scenario: WhatIfMetrics;
+}

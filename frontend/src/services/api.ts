@@ -8,6 +8,8 @@ import type {
   SystemRiskSummary,
   SystemStatus,
   UpdateOptionRequest,
+  WhatIfRequest,
+  WhatIfResponse,
 } from "../types/reservex";
 
 export const API_BASE_URL =
@@ -122,5 +124,12 @@ export const api = {
   releaseAllocation: (allocationId: string) =>
     request<Allocation>(`/allocations/${allocationId}/release`, {
       method: "POST",
+    }),
+
+  // Simulation
+  runWhatIf: (data: WhatIfRequest) =>
+    request<WhatIfResponse>("/simulation/what-if", {
+      method: "POST",
+      body: JSON.stringify(data),
     }),
 };

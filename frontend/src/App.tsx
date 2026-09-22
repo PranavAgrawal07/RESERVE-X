@@ -6,6 +6,7 @@ import { ResourcesPage } from "./pages/ResourcesPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { RiskPage } from "./pages/RiskPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { WhatIfPage } from "./pages/WhatIfPage";
 
 function App() {
   const [currentTab, setCurrentTab] = useState("overview");
@@ -20,6 +21,8 @@ function App() {
         return <ReservationsPage />;
       case "risk":
         return <RiskPage />;
+      case "what-if":
+        return <WhatIfPage />;
       case "activity":
         return <ActivityPage />;
       default:

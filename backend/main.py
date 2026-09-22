@@ -16,6 +16,7 @@ from backend.engine.option_manager import expire_stale_options
 from backend.api.resources import router as resources_router
 from backend.api.options import router as options_router
 from backend.api.system import router as system_router
+from backend.api.simulation import router as simulation_router
 
 
 # ── Background expiration sweep ──────────────────────────────────
@@ -65,6 +66,7 @@ API_PREFIX = "/api/v1"
 app.include_router(resources_router, prefix=API_PREFIX)
 app.include_router(options_router, prefix=API_PREFIX)
 app.include_router(system_router, prefix=API_PREFIX)
+app.include_router(simulation_router, prefix=API_PREFIX)
 
 
 @app.get("/")
