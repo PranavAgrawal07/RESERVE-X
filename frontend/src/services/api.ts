@@ -132,4 +132,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  getLiveSimulationStatus: () =>
+    request<import("../types/reservex").LiveSimulationStatus>("/simulation/live/status"),
+  startLiveSimulation: (speed: number = 1.0) =>
+    request<import("../types/reservex").LiveSimulationStatus>("/simulation/live/start", {
+      method: "POST",
+      body: JSON.stringify({ speed }),
+    }),
+  pauseLiveSimulation: () =>
+    request<import("../types/reservex").LiveSimulationStatus>("/simulation/live/pause", {
+      method: "POST",
+    }),
+  resetLiveSimulation: () =>
+    request<import("../types/reservex").LiveSimulationStatus>("/simulation/live/reset", {
+      method: "POST",
+    }),
 };

@@ -12,6 +12,7 @@ import type {
   CreateOptionRequest,
   CreateResourceRequest,
   EventLog,
+  LiveSimulationStatus,
   Resource,
   ResourceOption,
   SystemRiskSummary,
@@ -34,6 +35,7 @@ interface ReserveXContextValue {
   allocations: Allocation[];
   risk: SystemRiskSummary | null;
   events: EventLog[];
+  liveSimulation: LiveSimulationStatus | null;
   loading: boolean;
   isInitialLoading: boolean;
   error: string | null;
@@ -53,6 +55,9 @@ interface ReserveXContextValue {
   releaseAllocation: (allocationId: string) => Promise<boolean>;
   createResource: (data: CreateResourceRequest) => Promise<boolean>;
   createOption: (data: CreateOptionRequest) => Promise<boolean>;
+  startLiveSimulation: (speed?: number) => Promise<boolean>;
+  pauseLiveSimulation: () => Promise<boolean>;
+  resetLiveSimulation: () => Promise<boolean>;
 }
 
 const ReserveXContext = createContext<ReserveXContextValue | null>(null);
@@ -62,6 +67,7 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [events, setEvents] = useState<EventLog[]>([]);
+  const [liveSimulation, setLiveSimulation] = useState<LiveSimulationStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,13 +106,17 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
 
     try {
-      const [statusRes, eventsRes] = await Promise.all([
+      const [statusRes, eventsRes, liveSimRes] = await Promise.all([
         api.getStatus(),
         api.getEvents({ limit: 50 }),
+        api.getLiveSimulationStatus().catch(() => null),
       ]);
 
       setStatus(statusRes);
       setEvents(eventsRes);
+      if (liveSimRes) {
+        setLiveSimulation(liveSimRes);
+      }
       setIsOnline(true);
       setError(null);
       setLastUpdated(new Date());
@@ -306,6 +316,73 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     [addToast, refresh]
   );
 
+  // Live Simulation Actions
+  const startLiveSimulation = useCallback(
+    async (speed: number = 1.0): Promise<boolean> => {
+      try {
+        const res = await api.startLiveSimulation(speed);
+        setLiveSimulation(res);
+        addToast({
+          type: "success",
+          title: "Live Simulation Started",
+          message: `Autonomous agent fleet running at ${speed}x speed.`,
+        });
+        await refresh();
+        return true;
+      } catch (err: any) {
+        addToast({
+          type: "error",
+          title: "Simulation Start Failed",
+          message: err?.message || "Failed to start live simulation.",
+        });
+        return false;
+      }
+    },
+    [addToast, refresh]
+  );
+
+  const pauseLiveSimulation = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await api.pauseLiveSimulation();
+      setLiveSimulation(res);
+      addToast({
+        type: "info",
+        title: "Live Simulation Paused",
+        message: "Simulation progression paused.",
+      });
+      await refresh();
+      return true;
+    } catch (err: any) {
+      addToast({
+        type: "error",
+        title: "Pause Failed",
+        message: err?.message || "Failed to pause simulation.",
+      });
+      return false;
+    }
+  }, [addToast, refresh]);
+
+  const resetLiveSimulation = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await api.resetLiveSimulation();
+      setLiveSimulation(res);
+      addToast({
+        type: "info",
+        title: "Live Simulation Reset",
+        message: "Agent workflow states reset cleanly.",
+      });
+      await refresh();
+      return true;
+    } catch (err: any) {
+      addToast({
+        type: "error",
+        title: "Reset Failed",
+        message: err?.message || "Failed to reset simulation.",
+      });
+      return false;
+    }
+  }, [addToast, refresh]);
+
   const value: ReserveXContextValue = {
     status,
     resources: status?.resources || [],
@@ -313,6 +390,7 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     allocations: status?.allocations || [],
     risk: status?.risk || null,
     events,
+    liveSimulation,
     loading,
     isInitialLoading,
     error,
@@ -330,6 +408,9 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     releaseAllocation,
     createResource,
     createOption,
+    startLiveSimulation,
+    pauseLiveSimulation,
+    resetLiveSimulation,
   };
 
   return (
