@@ -7,6 +7,7 @@ import {
   History,
   CheckCircle2,
   FlaskConical,
+  WifiOff,
 } from "lucide-react";
 import { useReserveX } from "../../context/ReserveXContext";
 
@@ -19,13 +20,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onTabChange,
 }) => {
-  const { options, allocations, risk } = useReserveX();
+  const { options, allocations, risk, connectivity } = useReserveX();
 
   const pendingCount = options.filter((o) => o.status === "PENDING").length;
   const allocationCount = allocations.filter((a) => !a.released_at).length;
   const isHighRisk =
     risk?.highest_risk_level === "HIGH" ||
     risk?.highest_risk_level === "CRITICAL";
+
+  const isOfflineMode = connectivity?.mode === "OFFLINE";
+  const queuePending = connectivity?.queue_stats.pending || 0;
 
   const navItems = [
     {
@@ -63,6 +67,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: FlaskConical,
       badge: "HYPO",
       badgeColor: "bg-violet-500/20 text-violet-300 border border-violet-500/30",
+    },
+    {
+      id: "offline",
+      label: "Offline Resilience",
+      icon: WifiOff,
+      badge: isOfflineMode
+        ? "OFFLINE"
+        : queuePending > 0
+        ? `${queuePending} QUEUED`
+        : "RESILIENT",
+      badgeColor: isOfflineMode
+        ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse font-bold"
+        : queuePending > 0
+        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
     },
     {
       id: "activity",
@@ -129,6 +148,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Pending Demand:</span>
             <span className="text-cyan-300">{pendingCount} Options</span>
           </div>
+          <div className="flex justify-between">
+            <span>Connectivity:</span>
+            <span className={isOfflineMode ? "text-rose-400 font-bold" : "text-emerald-400"}>
+              {isOfflineMode ? "OFFLINE" : "ONLINE"}
+            </span>
+          </div>
+          {queuePending > 0 && (
+            <div className="flex justify-between text-amber-300">
+              <span>SQLite Buffer:</span>
+              <span className="font-bold">{queuePending} queued</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>System State:</span>
             <span className={isHighRisk ? "text-orange-400" : "text-emerald-400"}>

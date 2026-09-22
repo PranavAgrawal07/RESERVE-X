@@ -17,6 +17,8 @@ from backend.api.resources import router as resources_router
 from backend.api.options import router as options_router
 from backend.api.system import router as system_router
 from backend.api.simulation import router as simulation_router
+from backend.api.connectivity import router as connectivity_router
+from backend.offline.manager import offline_manager
 
 
 # ── Background expiration sweep ──────────────────────────────────
@@ -25,9 +27,14 @@ SWEEP_INTERVAL_SECONDS = 5
 
 
 async def _expiration_sweep() -> None:
-    """Periodically expire stale options."""
+    """Periodically expire stale options and reconcile offline queue if online."""
     while True:
         expire_stale_options()
+        try:
+            if offline_manager.is_online() and offline_manager.queue.count_pending() > 0:
+                offline_manager.sync_pending()
+        except Exception:
+            pass
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 
 
@@ -67,6 +74,7 @@ app.include_router(resources_router, prefix=API_PREFIX)
 app.include_router(options_router, prefix=API_PREFIX)
 app.include_router(system_router, prefix=API_PREFIX)
 app.include_router(simulation_router, prefix=API_PREFIX)
+app.include_router(connectivity_router, prefix=API_PREFIX)
 
 
 @app.get("/")

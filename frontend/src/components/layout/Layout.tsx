@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { ToastContainer } from "../common/Toast";
+import { ConnectivityBanner } from "../connectivity/ConnectivityBanner";
 import { useReserveX } from "../../context/ReserveXContext";
 
 interface LayoutProps {
@@ -21,6 +22,7 @@ export const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="min-h-screen bg-[#090d16] text-zinc-100 flex flex-col antialiased selection:bg-cyan-500/20 selection:text-cyan-200">
       <Header />
+      <ConnectivityBanner onNavigateToOfflinePage={() => onTabChange("offline")} />
 
       {/* Offline Alert Banner (shown prominently if disconnected) */}
       {!isOnline && (

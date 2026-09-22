@@ -14,6 +14,7 @@ from backend.engine.option_manager import (
     InvalidOptionStateError,
     InsufficientCapacityError,
 )
+from backend.offline.manager import offline_manager
 
 router = APIRouter(prefix="/options", tags=["options"])
 
@@ -39,6 +40,15 @@ class UpdateOptionRequest(BaseModel):
 @router.post("", response_model=ResourceOption, status_code=201)
 def create_option(req: CreateOptionRequest):
     """Create a new conditional resource option (PENDING)."""
+    if offline_manager.is_offline():
+        return offline_manager.handle_offline_option_request(
+            agent_id=req.agent_id,
+            capability=req.capability,
+            probability=req.probability,
+            expires_at=req.expires_at,
+            amount=req.amount,
+            priority=req.priority,
+        )
     return option_manager.create_option(
         agent_id=req.agent_id,
         capability=req.capability,

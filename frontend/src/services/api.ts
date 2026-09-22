@@ -10,6 +10,10 @@ import type {
   UpdateOptionRequest,
   WhatIfRequest,
   WhatIfResponse,
+  ConnectivityStatus,
+  ReconnectResponse,
+  QueuedOperation,
+  OfflineEventLog,
 } from "../types/reservex";
 
 export const API_BASE_URL =
@@ -132,4 +136,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  // Connectivity & Offline Resilience
+  getConnectivityStatus: () => request<ConnectivityStatus>("/connectivity/status"),
+  simulateDisconnect: (reason?: string) => {
+    const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+    return request<ConnectivityStatus>(`/connectivity/offline${query}`, {
+      method: "POST",
+    });
+  },
+  reconnectAndSync: () =>
+    request<ReconnectResponse>("/connectivity/online", { method: "POST" }),
+  getConnectivityQueue: (status?: string) => {
+    const query = status ? `?status=${status}` : "";
+    return request<QueuedOperation[]>(`/connectivity/queue${query}`);
+  },
+  getOfflineEvents: () => request<OfflineEventLog[]>("/connectivity/events"),
 };

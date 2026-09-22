@@ -17,6 +17,8 @@ import type {
   SystemRiskSummary,
   SystemStatus,
   UpdateOptionRequest,
+  ConnectivityStatus,
+  ReconnectResponse,
 } from "../types/reservex";
 
 export interface ToastMessage {
@@ -38,10 +40,14 @@ interface ReserveXContextValue {
   isInitialLoading: boolean;
   error: string | null;
   isOnline: boolean;
+  connectivity: ConnectivityStatus | null;
+  lastSyncResult: ReconnectResponse | null;
   lastUpdated: Date | null;
   isPolling: boolean;
   togglePolling: () => void;
   refresh: () => Promise<void>;
+  simulateDisconnect: (reason?: string) => Promise<boolean>;
+  reconnectAndSync: () => Promise<ReconnectResponse | null>;
   toasts: ToastMessage[];
   addToast: (toast: Omit<ToastMessage, "id" | "timestamp">) => void;
   removeToast: (id: string) => void;
@@ -66,6 +72,20 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [connectivity, setConnectivity] = useState<ConnectivityStatus | null>(() => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return {
+        mode: "OFFLINE",
+        is_offline: true,
+        offline_reason: "NETWORK_DISCONNECTED",
+        outage_started_at: new Date().toISOString(),
+        queue_stats: { total: 0, pending: 0, failed: 0, synced: 0 },
+        db_path: "data/offline_resilience.db",
+      };
+    }
+    return null;
+  });
+  const [lastSyncResult, setLastSyncResult] = useState<ReconnectResponse | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -100,13 +120,17 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
 
     try {
-      const [statusRes, eventsRes] = await Promise.all([
+      const [statusRes, eventsRes, connRes] = await Promise.all([
         api.getStatus(),
         api.getEvents({ limit: 50 }),
+        api.getConnectivityStatus().catch(() => null),
       ]);
 
       setStatus(statusRes);
       setEvents(eventsRes);
+      if (connRes) {
+        setConnectivity(connRes);
+      }
       setIsOnline(true);
       setError(null);
       setLastUpdated(new Date());
@@ -306,6 +330,139 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     [addToast, refresh]
   );
 
+  // Action: Simulate Disconnect
+  const simulateDisconnect = useCallback(
+    async (reason: string = "MANUAL"): Promise<boolean> => {
+      try {
+        setLastSyncResult(null);
+        const conn = await api.simulateDisconnect(reason);
+        setConnectivity(conn);
+        addToast({
+          type: "warning",
+          title:
+            reason === "NETWORK_DISCONNECTED"
+              ? "Network Disconnected (Hardware / Wi-Fi)"
+              : "Connectivity Lost (Simulated)",
+          message:
+            reason === "NETWORK_DISCONNECTED"
+              ? "Real network connection lost. System switched to OFFLINE mode with SQLite queue."
+              : "System is now in OFFLINE mode. Local processing and SQLite queue active.",
+        });
+        await refresh();
+        return true;
+      } catch (err: any) {
+        addToast({
+          type: "error",
+          title: "Failed to Switch Offline",
+          message: err?.message || "Error switching to offline mode.",
+        });
+        return false;
+      }
+    },
+    [addToast, refresh]
+  );
+
+  // Action: Reconnect & Sync
+  const reconnectAndSync = useCallback(async (): Promise<ReconnectResponse | null> => {
+    try {
+      const res = await api.reconnectAndSync();
+      setLastSyncResult(res);
+      addToast({
+        type: "success",
+        title: "Connectivity Restored (ONLINE)",
+        message: `Synchronized ${res.sync.synced} operations (${res.sync.remaining_pending} remaining).`,
+      });
+      await refresh();
+      return res;
+    } catch (err: any) {
+      addToast({
+        type: "error",
+        title: "Reconnection Failed",
+        message: err?.message || "Error restoring online connectivity.",
+      });
+      return null;
+    }
+  }, [addToast, refresh]);
+
+  // Real laptop network connectivity listeners (Wi-Fi / Ethernet state)
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const reconnectAndSyncRef = useRef(reconnectAndSync);
+  reconnectAndSyncRef.current = reconnectAndSync;
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
+
+  useEffect(() => {
+    const handleNetworkOffline = async () => {
+      // 1. Immediately update UI to 🔴 OFFLINE MODE (Network disconnected) & start/continue outage timer
+      setConnectivity((prev) => ({
+        mode: "OFFLINE",
+        is_offline: true,
+        offline_reason: "NETWORK_DISCONNECTED",
+        outage_started_at: prev?.outage_started_at || new Date().toISOString(),
+        queue_stats: prev?.queue_stats || { total: 0, pending: 0, failed: 0, synced: 0 },
+        db_path: prev?.db_path || "data/offline_resilience.db",
+      }));
+
+      addToastRef.current({
+        type: "warning",
+        title: "Network Disconnected (Hardware / Wi-Fi)",
+        message:
+          "Laptop lost network connectivity. Automatically switched to OFFLINE mode with local SQLite queue.",
+      });
+
+      // 3. Call the LOCAL backend: POST /api/v1/connectivity/offline?reason=NETWORK_DISCONNECTED
+      try {
+        const conn = await api.simulateDisconnect("NETWORK_DISCONNECTED");
+        // 4. Refresh backend connectivity state
+        setConnectivity(conn);
+        await refreshRef.current();
+      } catch (err: any) {
+        console.error("Failed to transition backend to offline on network disconnect:", err);
+      }
+    };
+
+    const handleNetworkOnline = async () => {
+      // 1. Immediately update UI to 🟢 ONLINE (Network connected)
+      setConnectivity((prev) =>
+        prev
+          ? {
+              ...prev,
+              mode: "ONLINE",
+              is_offline: false,
+              offline_reason: null,
+            }
+          : null
+      );
+
+      // 2 & 3. Call POST /api/v1/connectivity/online to trigger existing OfflineManager auto-sync
+      try {
+        const res = await reconnectAndSyncRef.current();
+        if (res) {
+          setLastSyncResult(res);
+        }
+      } catch (err: any) {
+        console.error("Failed to reconnect and sync on network restore:", err);
+        await refreshRef.current();
+      }
+    };
+
+    // Initial check if browser is already offline on load
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      handleNetworkOffline();
+    }
+
+    // Register ONE offline event listener and ONE online event listener
+    window.addEventListener("offline", handleNetworkOffline);
+    window.addEventListener("online", handleNetworkOnline);
+
+    return () => {
+      // Clean up listeners correctly
+      window.removeEventListener("offline", handleNetworkOffline);
+      window.removeEventListener("online", handleNetworkOnline);
+    };
+  }, []);
+
   const value: ReserveXContextValue = {
     status,
     resources: status?.resources || [],
@@ -317,10 +474,14 @@ export const ReserveXProvider: React.FC<{ children: React.ReactNode }> = ({
     isInitialLoading,
     error,
     isOnline,
+    connectivity,
+    lastSyncResult,
     lastUpdated,
     isPolling,
     togglePolling,
     refresh,
+    simulateDisconnect,
+    reconnectAndSync,
     toasts,
     addToast,
     removeToast,

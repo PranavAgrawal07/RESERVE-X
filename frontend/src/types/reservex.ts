@@ -140,3 +140,62 @@ export interface WhatIfResponse {
   current: WhatIfMetrics;
   scenario: WhatIfMetrics;
 }
+
+// ── Offline Resilience & Connectivity ───────────────────────────
+
+export interface QueueStats {
+  total: number;
+  pending: number;
+  failed: number;
+  synced: number;
+}
+
+export interface ConnectivityStatus {
+  mode: "ONLINE" | "OFFLINE";
+  is_offline: boolean;
+  offline_reason?: string | null;
+  outage_started_at: string | null;
+  queue_stats: QueueStats;
+  db_path: string;
+}
+
+export interface SyncResult {
+  synced: number;
+  failed: number;
+  remaining_pending: number;
+}
+
+export interface ReconnectResponse {
+  mode: "ONLINE" | "OFFLINE";
+  outage_duration_seconds: number | null;
+  sync: SyncResult;
+}
+
+export interface QueuedOperation {
+  operation_id: string;
+  idempotency_key: string;
+  operation_type: string;
+  timestamp: string;
+  agent_id: string;
+  capability: string;
+  probability: number;
+  amount: number;
+  priority: number;
+  expires_at: string;
+  payload_json: string;
+  sync_status: "PENDING" | "SYNCED" | "FAILED";
+  retry_count: number;
+  error_message?: string | null;
+  synced_at?: string | null;
+  reconciled_option_id?: string | null;
+  local_risk_level?: string | null;
+  local_expected_demand?: number | null;
+}
+
+export interface OfflineEventLog {
+  event_id: string;
+  operation_id?: string | null;
+  event_type: string;
+  timestamp: string;
+  details: Record<string, any>;
+}
