@@ -3,7 +3,6 @@ import type {
   CreateOptionRequest,
   CreateResourceRequest,
   EventLog,
-  LiveSimulationStatus,
   Resource,
   ResourceOption,
   SystemRiskSummary,
@@ -15,10 +14,14 @@ import type {
   ReconnectResponse,
   QueuedOperation,
   OfflineEventLog,
+  IntelligencePredictionRequest,
+  IntelligencePredictionResponse,
+  WorkflowHistoryRecord,
+  IntelligenceStatus,
 } from "../types/reservex";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api/v1";
+  import.meta.env.VITE_API_BASE_URL || "https://reserve-x-6o1f.onrender.com/api/v1";
 
 export class ApiError extends Error {
   status: number;
@@ -49,6 +52,7 @@ async function request<T>(
     const response = await fetch(url, { ...options, headers });
     let responseData: any = null;
     const text = await response.text();
+
     if (text) {
       try {
         responseData = JSON.parse(text);
@@ -71,26 +75,50 @@ async function request<T>(
     if (err instanceof ApiError) {
       throw err;
     }
-    // Network or connection error (e.g. backend offline)
-    throw new ApiError(0, err.message || "Failed to communicate with backend", err);
+
+    throw new ApiError(
+      0,
+      err.message || "Failed to communicate with backend",
+      err
+    );
   }
 }
 
 export const api = {
   // System
   getStatus: () => request<SystemStatus>("/status"),
+
   getRisk: () => request<SystemRiskSummary>("/risk"),
-  getEvents: (params?: { event_type?: string; agent_id?: string; limit?: number }) => {
+
+  getEvents: (
+    params?: {
+      event_type?: string;
+      agent_id?: string;
+      limit?: number;
+    }
+  ) => {
     const searchParams = new URLSearchParams();
-    if (params?.event_type) searchParams.set("event_type", params.event_type);
-    if (params?.agent_id) searchParams.set("agent_id", params.agent_id);
-    if (params?.limit) searchParams.set("limit", params.limit.toString());
+
+    if (params?.event_type)
+      searchParams.set("event_type", params.event_type);
+
+    if (params?.agent_id)
+      searchParams.set("agent_id", params.agent_id);
+
+    if (params?.limit)
+      searchParams.set("limit", params.limit.toString());
+
     const query = searchParams.toString();
-    return request<EventLog[]>(`/events${query ? `?${query}` : ""}`);
+
+    return request<EventLog[]>(
+      `/events${query ? `?${query}` : ""}`
+    );
   },
 
   // Resources
-  getResources: () => request<Resource[]>("/resources"),
+  getResources: () =>
+    request<Resource[]>("/resources"),
+
   createResource: (data: CreateResourceRequest) =>
     request<Resource>("/resources", {
       method: "POST",
@@ -98,76 +126,184 @@ export const api = {
     }),
 
   // Options
-  getOptions: (params?: { agent_id?: string; capability?: string; status?: string }) => {
+  getOptions: (
+    params?: {
+      agent_id?: string;
+      capability?: string;
+      status?: string;
+    }
+  ) => {
     const searchParams = new URLSearchParams();
-    if (params?.agent_id) searchParams.set("agent_id", params.agent_id);
-    if (params?.capability) searchParams.set("capability", params.capability);
-    if (params?.status) searchParams.set("status", params.status);
+
+    if (params?.agent_id)
+      searchParams.set("agent_id", params.agent_id);
+
+    if (params?.capability)
+      searchParams.set("capability", params.capability);
+
+    if (params?.status)
+      searchParams.set("status", params.status);
+
     const query = searchParams.toString();
-    return request<ResourceOption[]>(`/options${query ? `?${query}` : ""}`);
+
+    return request<ResourceOption[]>(
+      `/options${query ? `?${query}` : ""}`
+    );
   },
+
   createOption: (data: CreateOptionRequest) =>
     request<ResourceOption>("/options", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateOption: (optionId: string, data: UpdateOptionRequest) =>
+
+  updateOption: (
+    optionId: string,
+    data: UpdateOptionRequest
+  ) =>
     request<ResourceOption>(`/options/${optionId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+
   exerciseOption: (optionId: string) =>
-    request<Allocation>(`/options/${optionId}/exercise`, {
-      method: "POST",
-    }),
+    request<Allocation>(
+      `/options/${optionId}/exercise`,
+      {
+        method: "POST",
+      }
+    ),
+
   cancelOption: (optionId: string) =>
-    request<ResourceOption>(`/options/${optionId}/cancel`, {
-      method: "POST",
-    }),
+    request<ResourceOption>(
+      `/options/${optionId}/cancel`,
+      {
+        method: "POST",
+      }
+    ),
 
   // Allocations
   releaseAllocation: (allocationId: string) =>
-    request<Allocation>(`/allocations/${allocationId}/release`, {
-      method: "POST",
-    }),
+    request<Allocation>(
+      `/allocations/${allocationId}/release`,
+      {
+        method: "POST",
+      }
+    ),
 
   // Simulation
   runWhatIf: (data: WhatIfRequest) =>
-    request<WhatIfResponse>("/simulation/what-if", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    request<WhatIfResponse>(
+      "/simulation/what-if",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
 
   // Connectivity & Offline Resilience
-  getConnectivityStatus: () => request<ConnectivityStatus>("/connectivity/status"),
-  simulateDisconnect: (reason?: string) => {
-    const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
-    return request<ConnectivityStatus>(`/connectivity/offline${query}`, {
-      method: "POST",
-    });
-  },
-  reconnectAndSync: () =>
-    request<ReconnectResponse>("/connectivity/online", { method: "POST" }),
-  getConnectivityQueue: (status?: string) => {
-    const query = status ? `?status=${status}` : "";
-    return request<QueuedOperation[]>(`/connectivity/queue${query}`);
-  },
-  getOfflineEvents: () => request<OfflineEventLog[]>("/connectivity/events"),
+  getConnectivityStatus: () =>
+    request<ConnectivityStatus>(
+      "/connectivity/status"
+    ),
 
-  // Live Autonomous Simulation
-  getLiveSimulationStatus: () =>
-    request<LiveSimulationStatus>("/simulation/live/status"),
-  startLiveSimulation: (speed: number = 1.0) =>
-    request<LiveSimulationStatus>("/simulation/live/start", {
+  simulateDisconnect: (reason?: string) => {
+    const query = reason
+      ? `?reason=${encodeURIComponent(reason)}`
+      : "";
+
+    return request<ConnectivityStatus>(
+      `/connectivity/offline${query}`,
+      {
+        method: "POST",
+      }
+    );
+  },
+
+  reconnectAndSync: () =>
+    request<ReconnectResponse>(
+      "/connectivity/online",
+      {
+        method: "POST",
+      }
+    ),
+
+  getConnectivityQueue: (status?: string) => {
+    const query = status
+      ? `?status=${status}`
+      : "";
+
+    return request<QueuedOperation[]>(
+      `/connectivity/queue${query}`
+    );
+  },
+
+  getOfflineEvents: () =>
+    request<OfflineEventLog[]>(
+      "/connectivity/events"
+    ),
+
+  // Intelligence Layer
+  predictWorkflow: (
+    data: IntelligencePredictionRequest
+  ) =>
+    request<IntelligencePredictionResponse>(
+      "/intelligence/predict",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+
+  getIntelligenceHistory: (
+    params?: {
+      limit?: number;
+      status?: string;
+      agent_id?: string;
+    }
+  ) => {
+    const searchParams = new URLSearchParams();
+
+    if (params?.limit)
+      searchParams.set(
+        "limit",
+        params.limit.toString()
+      );
+
+    if (params?.status)
+      searchParams.set("status", params.status);
+
+    if (params?.agent_id)
+      searchParams.set(
+        "agent_id",
+        params.agent_id
+      );
+
+    const query = searchParams.toString();
+
+    return request<WorkflowHistoryRecord[]>(
+      `/intelligence/history${query ? `?${query}` : ""}`
+    );
+  },
+
+  getIntelligenceStatus: () =>
+    request<IntelligenceStatus>(
+      "/intelligence/status"
+    ),
+
+  sendIntelligenceFeedback: (
+    data: {
+      record_id?: string;
+      option_id?: string;
+      status: string;
+      outcome_details?: any;
+    }
+  ) =>
+    request<{
+      status: string;
+      outcome: string;
+    }>("/intelligence/feedback", {
       method: "POST",
-      body: JSON.stringify({ speed }),
-    }),
-  pauseLiveSimulation: () =>
-    request<LiveSimulationStatus>("/simulation/live/pause", {
-      method: "POST",
-    }),
-  resetLiveSimulation: () =>
-    request<LiveSimulationStatus>("/simulation/live/reset", {
-      method: "POST",
+      body: JSON.stringify(data),
     }),
 };
