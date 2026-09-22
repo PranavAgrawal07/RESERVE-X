@@ -39,18 +39,18 @@ class AgentLiveState:
         self.agent_id = agent.agent_id
         self.agent_type = agent.agent_type
         self.name = f"{agent.agent_type} Agent"
-        
+
         # Current execution state
         self.current_step_name: str = "init"
         self.current_capability: str = "NONE"
         self.predicted_capability: str = "NONE"
         self.prediction_probability: float = 0.0
-        
+
         # Active option / allocation bindings
         self.option_id: str | None = None
         self.option_status: str = "NONE"
         self.allocation_id: str | None = None
-        
+
         # Duration & Contention tracking
         self.remaining_duration: int = 1
         self.waiting_for_capacity: bool = False
@@ -90,16 +90,16 @@ class LiveSimulationRunner:
         self.predictor = predictor or LearnedPredictor()
         self.base_interval_seconds = base_interval_seconds
         self.speed: float = 1.0
-        
+
         self.tick_count: int = 0
         self.is_running: bool = False
         self.is_paused: bool = False
-        
+
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
         self._lock = threading.Lock()
-        
+
         self.agent_states: dict[str, AgentLiveState] = {}
         self._init_agents()
 
@@ -125,7 +125,7 @@ class LiveSimulationRunner:
         with self._lock:
             if speed > 0:
                 self.speed = float(speed)
-            
+
             if self.is_running and self.is_paused:
                 self.is_paused = False
                 self._pause_event.clear()
@@ -140,7 +140,7 @@ class LiveSimulationRunner:
             self.is_paused = False
             self._stop_event.clear()
             self._pause_event.clear()
-            
+
             self._thread = threading.Thread(target=self._run_loop, daemon=True, name="ReserveXLiveSim")
             self._thread.start()
             logger.info("Live simulation started.")
@@ -177,7 +177,7 @@ class LiveSimulationRunner:
                         self.client.release_allocation(state.allocation_id)
                     except Exception as e:
                         logger.debug("Failed to release allocation %s on reset: %s", state.allocation_id, e)
-            
+
             self.tick_count = 0
             self._init_agents()
             logger.info("Live simulation reset.")
